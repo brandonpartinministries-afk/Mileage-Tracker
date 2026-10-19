@@ -49,13 +49,14 @@ button.g{background:transparent;color:var(--mut);border:1px solid var(--bd);font
       <div><label for="odoE">Odometer end</label><input type="number" id="odoE" inputmode="decimal" min="0" placeholder="0"></div>
     </div>
     <div class="row">
-      <div><label for="from">From</label><input id="from" placeholder="Home"></div>
-      <div><label for="to">To</label><input id="to" placeholder="Office"></div>
+      <div><label for="from">From (location &amp; address)</label><input id="from" placeholder="Home"></div>
+      <div><label for="to">To (location &amp; address)</label><input id="to" placeholder="Office"></div>
     </div>
     <div class="row">
       <div><label for="type">Type</label><select id="type"><option>Business</option><option>Personal</option><option>Medical</option><option>Charity</option></select></div>
-      <div><label for="memo">Notes</label><input id="memo" placeholder="Optional"></div>
+      <div><label for="client">Client (e.g. R. Thomas)</label><input id="client"></div>
     </div>
+    <div style="margin-bottom:12px"><label for="memo">Purpose of errand (or notes)</label><input id="memo" placeholder="Pick up medications"></div>
     <button class="full" id="add">Save trip</button>
   </div>
   <div class="card">
@@ -66,9 +67,18 @@ button.g{background:transparent;color:var(--mut);border:1px solid var(--bd);font
     <div style="display:flex;justify-content:space-between;gap:8px"><span id="sumTxt" class="note"></span><span class="note">Business reimbursement: <b id="reimb">—</b></span></div>
   </div>
   <div class="card" id="list"></div>
+  <div class="card">
+    <div style="font-weight:600;margin-bottom:10px">Reimbursement form details</div>
+    <div class="row"><div><label for="pName">Printed name of employee</label><input id="pName"></div><div><label for="pNum">Employee number</label><input id="pNum"></div></div>
+    <div class="row"><div><label for="pAddr">Home address</label><input id="pAddr"></div><div><label for="pCoord">Service coordinator</label><input id="pCoord"></div></div>
+    <div class="row"><div><label for="pBr">Branch #</label><input id="pBr"></div><div><label for="pFax">Branch fax #</label><input id="pFax"></div></div>
+    <button class="full" id="pdf">Export reimbursement form (PDF)</button>
+    <p class="note" style="margin:8px 0 0">Fills the form with the trips shown for the selected month (Personal trips are left out).</p>
+  </div>
   <div style="display:flex;gap:8px;justify-content:center"><button class="g" id="csv">Export CSV</button></div>
   <p class="note" id="where"></p>
 </main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
 (function(){
   var trips=[], unit="mi", rate=0, mon="all", col=null, K="mileage-trips-v1", $=function(i){return document.getElementById(i)};
@@ -88,17 +98,65 @@ button.g{background:transparent;color:var(--mut);border:1px solid var(--bd);font
     if(!shown.length){l.innerHTML='<div class="empty">No trips yet. Add your first one above.</div>';return}
     l.innerHTML=shown.map(function(t){
       var route=(t.from||t.to)?esc((t.from||"?")+" → "+(t.to||"?")):"Trip";
-      return '<div class="trip"><div>'+route+'<small>'+esc(t.date)+' · '+esc(t.type)+(t.memo?' · '+esc(t.memo):'')+(t.odoEnd!=null?' · odo '+esc(t.odoStart+'–'+t.odoEnd+' '+t.odoUnit):'')+'</small></div><div><div class="m">'+show(t.miles)+'</div><button class="x" data-id="'+esc(t.id)+'">Delete</button></div></div>'
+      return '<div class="trip"><div>'+route+'<small>'+esc(t.date)+' · '+esc(t.type)+(t.client?' · '+esc(t.client):'')+(t.memo?' · '+esc(t.memo):'')+(t.odoEnd!=null?' · odo '+esc(t.odoStart+'–'+t.odoEnd+' '+t.odoUnit):'')+'</small></div><div><div class="m">'+show(t.miles)+'</div><button class="x" data-id="'+esc(t.id)+'">Delete</button></div></div>'
     }).join("");
   }
   function fillMonths(){var s=$("mon"),ms=[];trips.forEach(function(t){var m=t.date.slice(0,7);if(ms.indexOf(m)<0)ms.push(m)});ms.sort().reverse();if(mon!=="all"&&ms.indexOf(mon)<0)mon="all";var key=ms.join();if(s.getAttribute("data-k")!==key){s.innerHTML='<option value="all">All months</option>'+ms.map(function(m){return '<option>'+m+'</option>'}).join("");s.setAttribute("data-k",key)}s.value=mon}
+  function fmtD(s){var a=s.split('-');return (+a[1])+'/'+(+a[2])+'/'+a[0]}
+  function fit(d,s,x,y,w,sz){s=String(s||'');d.setFontSize(sz);while(sz>6&&d.getTextWidth(s)>w){sz-=0.5;d.setFontSize(sz)}d.text(s,x,y)}
+  function cell(d,s,x,y,w){d.setFontSize(8);var l=d.splitTextToSize(String(s||''),w-8).slice(0,2);if(l.length)d.text(l,x+4,l.length>1?y+11:y+16)}
+  function drawPage(d,p,rows,pg,pages){
+    var X=36,W=720,y=118;
+    d.setLineWidth(0.8);d.setDrawColor(0);d.setTextColor(0);
+    d.setFont('helvetica','bold');d.setFontSize(18);d.text('ERRAND MILES REIMBURSEMENT FORM',X,62);
+    d.setFont('helvetica','normal');d.rect(560,34,196,40);d.setFontSize(8);
+    fit(d,'BRANCH #: '+p.pBr,566,50,184,8);fit(d,'BRANCH FAX #: '+p.pFax,566,66,184,8);
+    d.setFontSize(7.5);
+    d.text(d.splitTextToSize('This form is to be used for reporting miles for shopping and errands as authorized. As a reminder, errands should be completed at a location that is closest to the client\'s home. You are required to contact the office in advance for doctor appointments. These trips are limited to one day per week, per client. A valid Driver\'s License and current vehicle insurance are required for reimbursement. The timeframe to submit this document is consistent with payroll deadlines.',W),X,88);
+    d.rect(X,y,W,52);d.line(X,y+26,X+W,y+26);d.line(X+500,y,X+500,y+52);
+    d.setFontSize(7);
+    d.text('PRINTED NAME OF EMPLOYEE:',X+4,y+9);d.text('EMPLOYEE NUMBER:',X+504,y+9);
+    d.text('EMPLOYEE\'S HOME ADDRESS:',X+4,y+35);d.text('NAME OF SERVICE COORDINATOR:',X+504,y+35);
+    fit(d,p.pName,X+4,y+21,488,10);fit(d,p.pNum,X+504,y+21,212,10);fit(d,p.pAddr,X+4,y+47,488,10);fit(d,p.pCoord,X+504,y+47,212,10);
+    var cw=[70,118,100,190,192,50],cx=[X],i;for(i=0;i<6;i++)cx.push(cx[i]+cw[i]);
+    var hy=y+52,hh=28,rh=26,n=8;
+    d.rect(X,hy,W,hh);d.rect(X,hy+hh,W,rh*n);
+    for(i=1;i<6;i++)d.line(cx[i],hy,cx[i],hy+hh+rh*n);
+    for(i=1;i<n;i++)d.line(X,hy+hh+i*rh,X+W,hy+hh+i*rh);
+    var hd=[['DATE','(month/day/year)'],['INDICATE PURPOSE','FOR ERRAND'],['FIRST INITIAL &','LAST NAME OF CLIENT'],['BEGINNING LOCATION & ADDRESS'],['ENDING LOCATION & ADDRESS'],['TOTAL','# OF MILES']];
+    d.setFontSize(7);
+    for(i=0;i<6;i++)d.text(hd[i],cx[i]+cw[i]/2,hy+(hd[i].length>1?11:17),{align:'center'});
+    var sum=0;
+    rows.forEach(function(t,r){
+      var ry=hy+hh+r*rh,m=Math.round(t.miles*10)/10;sum+=t.miles;
+      cell(d,fmtD(t.date),cx[0],ry,cw[0]);cell(d,t.memo,cx[1],ry,cw[1]);cell(d,t.client,cx[2],ry,cw[2]);
+      cell(d,t.from,cx[3],ry,cw[3]);cell(d,t.to,cx[4],ry,cw[4]);cell(d,String(m),cx[5],ry,cw[5]);
+    });
+    var ty=hy+hh+rh*n;
+    d.setFillColor(0,0,0);d.rect(X,ty,cx[4]-X,16,'F');
+    d.rect(cx[4],ty,cw[4]+cw[5],16);d.line(cx[5],ty,cx[5],ty+16);
+    d.setFont('helvetica','bold');d.setFontSize(8);d.text('TOTAL NUMBER OF MILES:',cx[5]-6,ty+11,{align:'right'});
+    d.text(String(Math.round(sum*10)/10),cx[5]+cw[5]/2,ty+11,{align:'center'});
+    d.setFont('helvetica','bolditalic');d.setFontSize(9);
+    d.text(['EMPLOYEE ACKNOWLEDGEMENT: I hereby certify that this Errand Miles Form','accurately reflects all travel miles during the pay period.'],X+10,ty+50);
+    d.setFont('helvetica','normal');
+    d.text('SIGNATURE OF EMPLOYEE:',X+10,ty+90);d.line(X+130,ty+91,X+390,ty+91);
+    d.text('DATE:',X+10,ty+114);d.line(X+42,ty+115,X+170,ty+115);
+    d.rect(X+470,ty+34,250,106);d.setFontSize(7);
+    d.text('OFFICE USE ONLY:  All miles are entered as HCEML.',X+478,ty+48);
+    d.text('Number of Clients: ________   Number of Miles: ________',X+478,ty+68);
+    d.text('INITIALS OF SUPERVISORY REVIEW: ______________',X+478,ty+88);
+    d.text('Admin Comments:',X+478,ty+108);
+    d.setFontSize(6.5);d.text('4/3/18 DK, APPROVED BY LB, 4/24/18 DK, 5/14/19 (CH, MH, DK)',X,592);
+    if(pages>1)d.text('Page '+pg+' of '+pages,X+W,592,{align:'right'});
+  }
   function saveLocal(){try{localStorage.setItem(K,JSON.stringify(trips))}catch(e){}}
   function loadLocal(){try{trips=JSON.parse(localStorage.getItem(K)||"[]")||[]}catch(e){trips=[]}}
   async function add(){
     var os=parseFloat($("odoS").value),oe=parseFloat($("odoE").value),d=parseFloat($("dist").value);var hasO=oe>os&&os>=0;if(!(d>0)&&hasO)d=oe-os;
     if(!(d>0)){$("dist").focus();return}
     var t={id:"trip_"+Date.now().toString(36)+Math.random().toString(36).slice(2,6),ts:Date.now(),date:$("date").value||today(),
-      miles:unit==="km"?d/KM:d,from:$("from").value.trim(),to:$("to").value.trim(),type:$("type").value,memo:$("memo").value.trim()};if(hasO){t.odoStart=os;t.odoEnd=oe;t.odoUnit=unit}
+      miles:unit==="km"?d/KM:d,from:$("from").value.trim(),to:$("to").value.trim(),type:$("type").value,memo:$("memo").value.trim(),client:$("client").value.trim()};if(hasO){t.odoStart=os;t.odoEnd=oe;t.odoUnit=unit}
     $("dist").value="";$("memo").value="";$("odoS").value=hasO?oe:"";$("odoE").value="";
     if(col){try{await col.doc(t.id).set(t)}catch(e){fallback();trips.push(t);saveLocal();render()}}
     else{trips.push(t);saveLocal();render()}
@@ -122,6 +180,21 @@ button.g{background:transparent;color:var(--mut);border:1px solid var(--bd);font
   $("mon").onchange=function(){mon=$("mon").value;render()};
   function od(){var s=parseFloat($("odoS").value),e=parseFloat($("odoE").value);if(e>s&&s>=0)$("dist").value=Math.round((e-s)*10)/10}
   $("odoS").oninput=od;$("odoE").oninput=od;
+  var PF=['pName','pNum','pAddr','pCoord','pBr','pFax'];
+  function getP(){var p={};PF.forEach(function(k){p[k]=$(k).value.trim()});return p}
+  try{var sp=JSON.parse(localStorage.getItem('mileage-profile')||'{}');PF.forEach(function(k){if(sp[k])$(k).value=sp[k]})}catch(e){}
+  PF.forEach(function(k){$(k).oninput=function(){var p=getP();try{localStorage.setItem('mileage-profile',JSON.stringify(p))}catch(e){}if(col){try{col.doc('profile').set(p).catch(function(){})}catch(e){}}}});
+  $('pdf').onclick=async function(){
+    var J=window.jspdf&&window.jspdf.jsPDF;
+    if(!J){$('where').textContent='The PDF tool did not load. Check your connection and try again.';return}
+    var rows=trips.filter(function(t){return t.type!=='Personal'&&(mon==='all'||t.date.slice(0,7)===mon)}).sort(function(a,b){return a.date.localeCompare(b.date)||a.ts-b.ts});
+    if(!rows.length){$('where').textContent='No trips to export for this selection.';return}
+    var p=getP(),doc=new J({orientation:'landscape',unit:'pt',format:'letter'}),per=8,pages=Math.ceil(rows.length/per);
+    for(var pg=0;pg<pages;pg++){if(pg)doc.addPage();drawPage(doc,p,rows.slice(pg*per,pg*per+per),pg+1,pages)}
+    var dl=null;try{dl=window.claude&&await window.claude.use('downloads')}catch(e){}
+    if(dl){try{await dl.save({filename:'errand-miles-reimbursement.pdf',data:doc.output('blob')})}catch(e){}}
+    else{doc.save('errand-miles-reimbursement.pdf')}
+  };
   loadLocal();render();$("where").textContent="Saved in this browser only.";
   (async function(){
     try{
@@ -133,7 +206,7 @@ button.g{background:transparent;color:var(--mut);border:1px solid var(--bd);font
       // one-time move of any browser-only trips into the account
       var local=trips.slice();
       c.onSnapshot(function(snap){
-        trips=snap.docs.map(function(d){return d.data()}).filter(function(t){return t&&typeof t.miles==="number"&&t.date});
+        snap.docs.forEach(function(d){if(d.id==='profile'){var p=d.data()||{};PF.forEach(function(k){if(p[k]&&!$(k).value)$(k).value=p[k]})}});trips=snap.docs.map(function(d){return d.data()}).filter(function(t){return t&&typeof t.miles==="number"&&t.date});
         col=c;$("where").textContent="Saved to your account. Private to you.";render();
       },function(){fallback()});
       for(var i=0;i<local.length;i++){try{await c.doc(local[i].id).set(local[i])}catch(e){break}}
