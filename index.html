@@ -17,8 +17,8 @@ h1{font-size:22px;margin:4px 0 14px;display:flex;justify-content:space-between;a
 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .stat b{display:block;font-size:20px}.stat span{font-size:12px;color:var(--mut)}
 label{display:block;font-size:12px;color:var(--mut);margin-bottom:3px}
-input,select{width:100%;font:inherit;color:var(--tx);background:var(--bg);border:1px solid var(--bd);border-radius:9px;padding:10px}
-.row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+input,select{width:100%;min-width:0;font:inherit;color:var(--tx);background:var(--bg);border:1px solid var(--bd);border-radius:9px;padding:10px}
+.row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px 20px;margin-bottom:12px}.row>div{min-width:0}
 button{font:inherit;border:0;border-radius:9px;padding:11px 14px;cursor:pointer;background:var(--ac);color:var(--acx);font-weight:600}
 button.g{background:transparent;color:var(--mut);border:1px solid var(--bd);font-weight:500;padding:6px 10px;font-size:13px}
 .full{width:100%}
